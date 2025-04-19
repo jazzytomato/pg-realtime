@@ -120,10 +120,6 @@
 
     (let [table-kw (table->kw table)
           op-kw (op->kw operation)
-          changes (case op-kw
-                    :update (reduce-kv (fn [m k v] (assoc m k [v (get row k)])) {} old_values)
-                    :insert (reduce-kv (fn [m k v] (assoc m k [nil v])) {} row)
-                    :delete (reduce-kv (fn [m k v] (assoc m k [v nil])) {} row))
 
           decode-cell
           (fn [{:keys [value oid]}]
@@ -136,15 +132,23 @@
                  (map (fn [[col cell]]
                         [(if (keyword? col) col (keyword col))
                          (decode-cell cell)]))
-                 (into {})))]
+                 (into {})))
+
+          decoded-row (decode-map row)
+
+          decoded-old-values (decode-map old_values)
+
+          changes (case op-kw
+                    :update (reduce-kv (fn [m k v] (assoc m k [v (get decoded-row k)])) {} decoded-old-values)
+                    :insert (reduce-kv (fn [m k v] (assoc m k [nil v])) {} decoded-row)
+                    :delete (reduce-kv (fn [m k v] (assoc m k [v nil])) {} decoded-row))]
 
       (cond-> {:table      table-kw
                :operation  op-kw
-               :row        (decode-map row)
+               :row        decoded-row
                :changes    changes
                :hashed     (set hashed)
-               :error      error}
-        old_values (assoc :old_values (decode-map old_values))))))
+               :error      error}))))
 
 ;; System state
 (defonce ^:private system-state (atom nil))
