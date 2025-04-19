@@ -261,6 +261,7 @@
 ;; -------------------------------------------------------------------
 
 (use-fixtures :once tf/db-fixture)
+#_(use-fixtures :each tf/reset-db-fixture)
 
 (deftest query-parsing-test
   (pg/query tf/*db-conn* sut/parse-query-sql)
@@ -288,6 +289,12 @@
       (is (= #{:test_schema/test_table} (:watched-tables result)))))
 
   (testing "Subquery parsing"
-    (pg/execute tf/*db-conn* "CREATE TABLE products (id SERIAL PRIMARY KEY, name TEXT);")
+    (let [result (#'sut/parse-query tf/*db-conn* "SELECT * FROM (SELECT * FROM orders) AS subquery")]
+      (is (= #{:orders} (:watched-tables result)))
+      (is (= #{:id :user_id :amount} (get-in result [:watched-columns :orders])))))
 
-      )
+  (testing "Parameterized query parsing"
+    (let [result (#'sut/parse-query tf/*db-conn* "SELECT * FROM users WHERE id = $1 OR email IN ($2) OR COALESCE($3, $4) = $5")]
+      (is (= #{:users} (:watched-tables result)))
+      (is (= #{:id :name :email} (get-in result [:watched-columns :users]))))))
+

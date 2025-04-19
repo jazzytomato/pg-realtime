@@ -43,6 +43,11 @@
       (finally
         (.stop container)))))
 
+(defn reset-db-fixture [f]
+  (when *db-conn*
+    (pg/execute *db-conn* "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"))
+  (f))
+
 (use-fixtures :once db-fixture)
 
 ;; verify container setup
