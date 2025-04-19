@@ -346,7 +346,7 @@
 
   (let [{:keys [subscriptions]} @system-state]
     (when-let [{:keys [throttler]} (get @subscriptions id)]
-      ((:stop throttler))
+      (close! throttler)
       (swap! subscriptions dissoc id)
 
       true)))

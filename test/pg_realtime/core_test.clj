@@ -1,7 +1,9 @@
 (ns pg-realtime.core-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [jsonista.core :as json]
-            [pg-realtime.core :as sut])
+            [pg-realtime.fixtures :as tf]
+            [pg-realtime.core :as sut]
+            [pg.core :as pg])
   (:import (java.time LocalDate LocalDateTime LocalTime OffsetDateTime)))
 
 (def default-refresh-fn
@@ -253,3 +255,39 @@
           (is (= expected (-> result :row :col))
               (str "OID " oid "(" description ") did not decode. Result: " (-> result :row :col)
                    ", Expected: " expected)))))))
+
+;; -------------------------------------------------------------------
+;; DB tests
+;; -------------------------------------------------------------------
+
+(use-fixtures :once tf/db-fixture)
+
+(deftest query-parsing-test
+  (pg/query tf/*db-conn* sut/parse-query-sql)
+
+  (testing "Simple query parsing"
+    (pg/execute tf/*db-conn* "CREATE TABLE users (id SERIAL PRIMARY KEY, name TEXT, email TEXT);")
+
+    (let [result (#'sut/parse-query tf/*db-conn* "SELECT * FROM users")]
+      (is (= #{:users} (:watched-tables result)))
+      (is (contains? (:watched-columns result) :users))))
+
+  (testing "JOIN query parsing"
+    (pg/execute tf/*db-conn* "CREATE TABLE orders (id SERIAL PRIMARY KEY, user_id INTEGER, amount DECIMAL);")
+
+    (let [result (#'sut/parse-query tf/*db-conn* "SELECT u.name, o.amount FROM users u JOIN orders o ON u.id = o.user_id")]
+      (is (= #{:users :orders} (:watched-tables result)))
+      (is (= #{:id :name} (get-in result [:watched-columns :users])))
+      (is (= #{:user_id :amount} (get-in result [:watched-columns :orders])))))
+
+  (testing "Schema-qualified table parsing"
+    (pg/execute tf/*db-conn* "CREATE SCHEMA test_schema;")
+    (pg/execute tf/*db-conn* "CREATE TABLE test_schema.test_table (id SERIAL PRIMARY KEY, data TEXT);")
+
+    (let [result (#'sut/parse-query tf/*db-conn* "SELECT * FROM test_schema.test_table")]
+      (is (= #{:test_schema/test_table} (:watched-tables result)))))
+
+  (testing "Subquery parsing"
+    (pg/execute tf/*db-conn* "CREATE TABLE products (id SERIAL PRIMARY KEY, name TEXT);")
+
+      )
