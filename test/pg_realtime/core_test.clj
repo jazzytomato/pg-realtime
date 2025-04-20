@@ -298,3 +298,64 @@
       (is (= #{:users} (:watched-tables result)))
       (is (= #{:id :name :email} (get-in result [:watched-columns :users]))))))
 
+;; -------------------------------------------------------------------
+;; Error handling tests
+;; -------------------------------------------------------------------
+
+(deftest error-handling-test
+  (pg/execute tf/*db-conn* "CREATE TABLE error_test (id SERIAL PRIMARY KEY, value TEXT);")
+
+  (testing "Query execution error handling"
+    (let [error-received (atom nil)
+          custom-error-handler (fn [e _]
+                                 (reset! error-received e))
+
+          _ (sut/start! tf/*db-config* {})
+
+          _ (sut/sub ::error-test
+                     tf/*db-conn*
+                     "SELECT * FROM error_test"
+                     {:error-handler custom-error-handler})]
+
+      (pg/execute tf/*db-conn* "INSERT INTO error_test (value) VALUES ('valid data')")
+      (pg/execute tf/*db-conn* "DROP TABLE error_test;")
+
+      (tf/wait-for-condition (fn [] @error-received)
+                             :message "Error handler should have been called")
+
+      (is (re-find #"relation \"error_test\" does not exist" (.getMessage @error-received)))
+
+      (sut/unsub ::error-test)
+      (sut/shutdown!)))
+
+  #_(testing "Recovery after errors"
+      (pg/execute tf/*db-conn* "CREATE TABLE error_test (id SERIAL PRIMARY KEY, value TEXT);")
+      (sut/start! tf/*db-config* {})
+
+      (let [test-atom (sut/sub ::recovery-test
+                               tf/*db-conn*
+                               "SELECT * FROM error_test")]
+
+      ;; Insert valid data
+        (pg/execute tf/*db-conn* "INSERT INTO error_test (value) VALUES ('valid data')")
+
+        (tf/wait-for-condition #(= 1 (count @test-atom))
+                               :message "Valid data not received")
+
+      ;; break the table temporarily
+        (pg/execute tf/*db-conn* "ALTER TABLE error_test ADD COLUMN temp INTEGER NOT NULL")
+
+        (pg/execute tf/*db-conn* "UPDATE error_test SET value = 'should error'")
+
+        (pg/execute tf/*db-conn* "ALTER TABLE error_test ALTER COLUMN temp DROP NOT NULL")
+        (pg/execute tf/*db-conn* "UPDATE error_test SET temp = 0")
+
+        (pg/execute tf/*db-conn* "INSERT INTO error_test (value, temp) VALUES ('recovery data', 1)")
+
+        (tf/wait-for-condition #(= 2 (count @test-atom))
+                               :message "System didn't recover after error"
+                               :timeout-ms 3000)
+
+        (sut/unsub ::recovery-test)))
+
+  (sut/shutdown!))
