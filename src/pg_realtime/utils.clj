@@ -27,8 +27,8 @@
   (-> op (str/lower-case) keyword))
 
 (defmacro def-sql
-  {:clj-kondo/lint-as 'clojure.core/def}
   "Defines a var whose value is the contents of a SQL file located in resources/sql."
+  {:clj-kondo/lint-as 'clojure.core/def}
   [name filename]
   `(def ~name (slurp (io/resource (str "sql/" ~filename)))))
 

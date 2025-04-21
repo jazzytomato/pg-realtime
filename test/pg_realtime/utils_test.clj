@@ -8,6 +8,7 @@
   (let [sql-content "SELECT * FROM users;"
         resource-fn (fn [_] (StringReader. sql-content))]
     (with-redefs [io/resource resource-fn]
+      #_:clj-kondo/ignore
       (sut/def-sql my-query "query.sql")
       (is (= sql-content my-query)))))
 
