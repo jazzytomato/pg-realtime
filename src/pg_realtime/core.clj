@@ -6,7 +6,7 @@
             [clojure.core.async :refer [chan go-loop <! >! put! close! timeout alts!]]
             [clojure.tools.logging :as log]
             [jsonista.core :as json]
-            [pg-realtime.utils :refer [def-sql render-sql hash-results table->kw table-kw->str op->kw val->str-or-nil]]
+            [pg-realtime.utils :refer [def-sql render-sql hash-results table->kw table-kw->str op->kw]]
             [pg-realtime.throttle :refer [create-throttler]]))
 
 (def-sql trigger-sql "create_trigger.sql")
@@ -67,7 +67,6 @@
   "Execute a query and update the atom if results have changed."
   [conn query opts result-atom last-hash-atom error-handler]
   (try
-    (log/info "Executing query:" query)
     (let [result (pg/execute conn query opts)
           result-hash (hash-results result)]
       (when (not= result-hash @last-hash-atom)
@@ -83,8 +82,6 @@
         watched-table-cols (get watched-columns table)
         tracked-columns-changed? (some changed-col-names watched-table-cols)]
 
-    (log/info "tracked-columns-changed?: " tracked-columns-changed?)
-
     (when tracked-columns-changed?
       (if (map? refresh?)
         (if-let [filter-map (get refresh? table)]
@@ -98,10 +95,6 @@
                              notification-values (->> (get changes filter-col)
                                                       (into #{(get row filter-col)})
                                                       set)]
-
-                         (log/info "filter-set: " filter-set)
-                         (log/info "notification-values: " notification-values)
-
                          (not-empty (set/intersection filter-set notification-values))))))
           true) ;; map not present in filter, default to tracked-columns
 
@@ -381,58 +374,3 @@
         (log/info "Dropping function:" function_name "with args:" args)
         (pg/query conn drop-func-sql))))
   true)
-
-;; Example usage
-(comment
-  (def db-config {:host "localhost"
-                  :port 5433
-                  :user "woolly"
-                  :password "woolly"
-                  :database "woolly"})
-
-  (start! db-config {})
-
-  (def conn (pg/pool "jdbc:postgresql://localhost:5433/woolly?user=woolly&password=woolly"))
-
-  (def my-atom (sub
-                conn
-                ::chat-msgs
-                "select c.id as chan_id, c.name as chan_name, u.id as user_id, m.id, u.display_name as user_name, m.content, m.created_at
-                 from msgs m
-                 inner join users u on m.sender_id = u.id
-                 inner join chans c on m.chan_id = c.id
-                 where c.id = '0195b063-a51a-7f13-a7ba-600ed657bf57'"
-                {:refresh? {:chans {:id :result/chan_id}
-                            :users {:id :result/user_id}
-                            :msgs {:chan_id :result/chan_id}}}))
-
-  (add-watch my-atom :watcher1
-             (fn [key _atom old-state new-state]
-               (println "-- Atom Changed --")
-               (println "key:" key)
-               (println "old-state:" old-state)
-               (println "new-state:" new-state)))
-
-  (pg/execute conn "update msgs set content = 'teffstasdsadqweddss' where id = '01961b27-ff7a-7521-8f38-2cfbac4d386d'")
-  (pg/execute conn "update orgs set name = 'test' where id = '0196360e-87b5-7788-a69e-f88dc65b18ad'")
-
-  (pg/execute conn "insert into orgs (name) values ('test7') ")
-
-  (unsub ::chat-msgs)
-
-  (def users-atom (sub conn
-                       ::all-users
-                       "SELECT id, email, display_name FROM users"))
-
-  ;; Add a watch to react to changes
-  (add-watch users-atom ::all-users-atom
-             (fn [_ _ _old-state new-state]
-               (println "Users data changed: " new-state)))
-
-  (pg/execute conn "update users set display_name = 'johnasd' where id = '0195b061-8c12-7329-873e-67ab19b6e2e3'")
-
-  (pg/execute conn "update users set avatar_url = 'asdasd' where id = '0195b061-8c12-7329-873e-67ab19b6e2e3'")
-
-  (shutdown!)
-
-  (destroy-pg-realtime-objects! db-config))

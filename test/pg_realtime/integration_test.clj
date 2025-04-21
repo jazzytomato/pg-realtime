@@ -48,24 +48,25 @@
 
 (deftest complex-join-query-test
   ;; Set up test tables with relationships
-  (pg/execute tf/*db-conn* "CREATE TABLE categories (id SERIAL PRIMARY KEY, name TEXT);")
-  (pg/execute tf/*db-conn* "CREATE TABLE products (id SERIAL PRIMARY KEY, name TEXT, price DECIMAL, category_id INTEGER);")
-  (pg/execute tf/*db-conn* "CREATE TABLE inventory (id SERIAL PRIMARY KEY, product_id INTEGER, quantity INTEGER);")
+  (pg/execute tf/*db-conn* "CREATE SCHEMA myschema;")
+  (pg/execute tf/*db-conn* "CREATE TABLE myschema.categories (id SERIAL PRIMARY KEY, name TEXT);")
+  (pg/execute tf/*db-conn* "CREATE TABLE myschema.products (id SERIAL PRIMARY KEY, name TEXT, price DECIMAL, category_id INTEGER);")
+  (pg/execute tf/*db-conn* "CREATE TABLE myschema.inventory (id SERIAL PRIMARY KEY, product_id INTEGER, quantity INTEGER);")
 
   ;; Insert test data
-  (pg/execute tf/*db-conn* "INSERT INTO categories (name) VALUES ('Electronics'), ('Books');")
-  (pg/execute tf/*db-conn* "INSERT INTO products (name, price, category_id) VALUES
+  (pg/execute tf/*db-conn* "INSERT INTO myschema.categories (name) VALUES ('Electronics'), ('Books');")
+  (pg/execute tf/*db-conn* "INSERT INTO myschema.products (name, price, category_id) VALUES
                      ('Laptop', 1000.00, 1),
                      ('Phone', 500.00, 1),
                      ('Novel', 15.00, 2);")
-  (pg/execute tf/*db-conn* "INSERT INTO inventory (product_id, quantity) VALUES (1, 10), (2, 20), (3, 30);")
+  (pg/execute tf/*db-conn* "INSERT INTO myschema.inventory (product_id, quantity) VALUES (1, 10), (2, 20), (3, 30);")
 
   (sut/start! tf/*db-config* {})
 
   (let [query "SELECT p.id, p.name, p.price, c.id as category_id, c.name as category_name, i.quantity
-              FROM products p
-              JOIN categories c ON p.category_id = c.id
-              JOIN inventory i ON p.id = i.product_id
+              FROM myschema.products p
+              JOIN myschema.categories c ON p.category_id = c.id
+              JOIN myschema.inventory i ON p.id = i.product_id
               WHERE c.name = 'Electronics'"
 
         products-atom (sut/sub ::electronics
@@ -79,32 +80,32 @@
     (is (every? #(= "Electronics" (:category_name %)) @products-atom))
 
     ;; updates to inventory
-    (pg/execute tf/*db-conn* "UPDATE inventory SET quantity = 15 WHERE product_id = 1")
+    (pg/execute tf/*db-conn* "UPDATE myschema.inventory SET quantity = 15 WHERE product_id = 1")
 
     (tf/wait-for-condition (fn [] (= 15 (:quantity (first (filter #(= "Laptop" (:name %)) @products-atom)))))
                            :message "Inventory update not reflected")
 
     ;; update product name
-    (pg/execute tf/*db-conn* "UPDATE products SET name = 'Smartphone' WHERE name = 'Phone'")
+    (pg/execute tf/*db-conn* "UPDATE myschema.products SET name = 'Smartphone' WHERE name = 'Phone'")
     (tf/wait-for-condition #(= "Smartphone" (:name (first @products-atom)))
                            :message "Product name update not reflected")
 
     ;; moving a product to a different category
-    (pg/execute tf/*db-conn* "UPDATE products SET category_id = 2 WHERE name = 'Smartphone'")
+    (pg/execute tf/*db-conn* "UPDATE myschema.products SET category_id = 2 WHERE name = 'Smartphone'")
 
     (tf/wait-for-condition #(= 1 (count @products-atom))
                            :message "Category change not reflected")
 
     ;; update phone product name again should not refresh the query as it is now in a different category
-    (pg/execute tf/*db-conn* "UPDATE products SET name = 'Smartphone Pro' WHERE name = 'Smartphone'")
+    (pg/execute tf/*db-conn* "UPDATE myschema.products SET name = 'Smartphone Pro' WHERE name = 'Smartphone'")
     (Thread/sleep 500)
     (is (not (some #(= "Smartphone Pro" (:name %)) @products-atom)))
 
     ;; adding a new product in the Electronics category
-    (pg/execute tf/*db-conn* "INSERT INTO products (name, price, category_id) VALUES ('Tablet', 300.00, 1)")
-    (let [new_product_id (-> (pg/execute tf/*db-conn* "SELECT id FROM products WHERE name = 'Tablet'" {:first? true})
+    (pg/execute tf/*db-conn* "INSERT INTO myschema.products (name, price, category_id) VALUES ('Tablet', 300.00, 1)")
+    (let [new_product_id (-> (pg/execute tf/*db-conn* "SELECT id FROM myschema.products WHERE name = 'Tablet'" {:first? true})
                              :id)]
-      (pg/execute tf/*db-conn* "INSERT INTO inventory (product_id, quantity) VALUES ($1, 25)" {:params [new_product_id]})
+      (pg/execute tf/*db-conn* "INSERT INTO myschema.inventory (product_id, quantity) VALUES ($1, 25)" {:params [new_product_id]})
 
       (tf/wait-for-condition #(= 2 (count @products-atom))
                              :message "New product not added to results")

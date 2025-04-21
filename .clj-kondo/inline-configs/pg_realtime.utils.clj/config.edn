@@ -1,0 +1,1 @@
+{:lint-as {pg-realtime.utils/def-sql clojure.core/def}}

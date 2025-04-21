@@ -26,13 +26,8 @@
 (defn op->kw [op]
   (-> op (str/lower-case) keyword))
 
-(defn val->str-or-nil
-  "Converts a value to a string if it's not nil, otherwise returns nil."
-  [val]
-  (when-not (nil? val)
-    (str val)))
-
 (defmacro def-sql
+  {:clj-kondo/lint-as 'clojure.core/def}
   "Defines a var whose value is the contents of a SQL file located in resources/sql."
   [name filename]
   `(def ~name (slurp (io/resource (str "sql/" ~filename)))))

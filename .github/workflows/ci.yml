@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install Clojure Tools
+        uses: DeLaGuardo/setup-clojure@13.2
+        with:
+          cli: latest
+          clj-kondo: latest
+          cljfmt: latest
+
+      - name: Cache clojure dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.m2/repository
+            ~/.gitlibs
+            ~/.deps.clj
+          key: cljdeps-${{ hashFiles('deps.edn') }}
+          restore-keys: cljdeps-
+
+      - name: Lint
+        run: clj-kondo --lint src test
+
+      - name: Format
+        run: cljfmt check --lint src test
+
+      - name: Run tests
+        run: clojure -M:test -m cognitect.test-runner

@@ -1,6 +1,5 @@
 (ns pg-realtime.throttle-test
-  (:require [clojure.test :refer :all]
-            [pg-realtime.fixtures :as tf]
+  (:require [pg-realtime.fixtures :as tf]
             [clojure.test :refer [deftest testing is use-fixtures]]
             [pg.core :as pg]
             [pg-realtime.core :as sut]))
