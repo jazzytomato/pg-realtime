@@ -326,36 +326,27 @@
       (is (re-find #"relation \"error_test\" does not exist" (.getMessage @error-received)))
 
       (sut/unsub ::error-test)
-      (sut/shutdown!)))
+      (sut/shutdown!))))
 
-  #_(testing "Recovery after errors"
-      (pg/execute tf/*db-conn* "CREATE TABLE error_test (id SERIAL PRIMARY KEY, value TEXT);")
-      (sut/start! tf/*db-config* {})
+;; -------------------------------------------------------------------
+;; Cleanup test
+;; -------------------------------------------------------------------
 
-      (let [test-atom (sut/sub ::recovery-test
-                               tf/*db-conn*
-                               "SELECT * FROM error_test")]
+(deftest destroy-pg-realtime-objects!-test
+  (pg/execute tf/*db-conn* "CREATE TABLE cleanup_test (id SERIAL PRIMARY KEY);")
 
-      ;; Insert valid data
-        (pg/execute tf/*db-conn* "INSERT INTO error_test (value) VALUES ('valid data')")
+  (#'sut/ensure-table-trigger-exists tf/*db-conn* "cleanup_test")
 
-        (tf/wait-for-condition #(= 1 (count @test-atom))
-                               :message "Valid data not received")
+  (let [trigger-exists? (fn []
+                          (-> (pg/execute tf/*db-conn*
+                                          "SELECT COUNT(*) > 0 AS exists
+                               FROM pg_trigger
+                               WHERE tgname LIKE '_pg_realtime_%'")
+                              first
+                              :exists))]
 
-      ;; break the table temporarily
-        (pg/execute tf/*db-conn* "ALTER TABLE error_test ADD COLUMN temp INTEGER NOT NULL")
+    (is (trigger-exists?) "PG triggers should exist before cleanup")
 
-        (pg/execute tf/*db-conn* "UPDATE error_test SET value = 'should error'")
+    (sut/destroy-pg-realtime-objects! tf/*db-conn*)
 
-        (pg/execute tf/*db-conn* "ALTER TABLE error_test ALTER COLUMN temp DROP NOT NULL")
-        (pg/execute tf/*db-conn* "UPDATE error_test SET temp = 0")
-
-        (pg/execute tf/*db-conn* "INSERT INTO error_test (value, temp) VALUES ('recovery data', 1)")
-
-        (tf/wait-for-condition #(= 2 (count @test-atom))
-                               :message "System didn't recover after error"
-                               :timeout-ms 3000)
-
-        (sut/unsub ::recovery-test)))
-
-  (sut/shutdown!))
+    (is (not (trigger-exists?)) "PG triggers should be removed after cleanup")))

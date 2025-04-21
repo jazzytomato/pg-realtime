@@ -46,6 +46,8 @@ pg-realtime uses a combination of PostgreSQL's notification system (LISTEN/NOTIF
 
 This library offers a pragmatic approach to enable realtime queries with no infrastructure changes. It is developed with "best effort" in mind, so if you need better performance, consider using a change data capture solution.
 
+- pg-realtime insert triggers on tracked tables, so this will generate some overhead on insert/update/delete operations.
+- The first time a query subscribes, it will be slower than subsequent queries, as the trigger function may need to be created and the query needs to be parsed.
 - The query parser is basic and only identifies used tables and columns. It does not track the values used in the query. This can be improved by providing a `refresh?` option when subscribing.
 - With the default refresh behaviour, it is likely that the query will be refreshed more often than necessary (however, the atom won't update if the result has not changed).
 - Good refresh strategies aren't always straightforward to write for non-trivial queries, especially with joins. See the advanced usage section for more details.
@@ -68,7 +70,7 @@ If you need to clean up these objects, you can do so with `pgrt/destroy-pg-realt
 ## Dependencies
 
 - com.github.igrishaev/pg2-core. This library offers better support for PG LISTEN/NOTIFY than jdbc drivers. See https://github.com/igrishaev/pg2 for more details.
-  You will need to use [pg2 execute](https://github.com/igrishaev/pg2/blob/master/docs/query-execute.md#execute) to run your queries. JDBC support could be added if people are interested, please submit an issue.
+  You will need to use [pg2 execute](https://github.com/igrishaev/pg2/blob/master/docs/query-execute.md#execute) to run your queries. JDBC support could be added if people are interested, please submit an issue. It should be possible to use both drivers though.
 - org.clojure/core.async
 
 ## Requirements
@@ -112,7 +114,7 @@ com.github.jazzytomato/pg-realtime {:mvn/version "0.1.0"}
                           conn
                           "SELECT id, email, display_name FROM users"))
 
-;; Add a watch to react to changes
+;; e.g. add a watch to react to changes
 (add-watch !users ::watcher
            (fn [_ _ _old-state new-state]
              (println "Users data changed: " new-state)))
@@ -150,7 +152,7 @@ This will refresh the query if:
 - An existing user is updated from status "active" to something else
 - An existing user with status "active" is deleted
 
-If one of the used table is not provided in the `refresh?` map, the default behaviour will be used for that table (i.e. refresh on any change for used columns).
+If one of the used table is not provided in the `refresh?` map, the default behaviour will be used for that table (i.e. refresh when any change of a used columns).
 
 Filtering notifications can become tricky with joins & more complex queries, see the advanced usage section for more details.
 
@@ -309,8 +311,7 @@ Because this is a common use case, you can provide a map instead of a function a
 
 So, this is nice, but unfortunately it has some edge cases which limits is usability. It won't work if the data is not present in the existing result set, and this may happen for example if:
 - The data is not in the current results because of a join. For example, in the example above, if the order is not in the current results because it has no items. Consider using an outer join.
-- The query is an aggregate
-- The query returns a limited number of rows (e.g. `LIMIT 10`) 
+- The query returns a limited number of rows (e.g. `LIMIT 10`) and the data is not in the current results.
 
 #### Custom refresh function using a lookup query
 
