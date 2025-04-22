@@ -42,5 +42,5 @@ jobs:
       - name: Format
         run: cljfmt check src test
 
-      - name: Run tests
-        run: clojure -M:test -m cognitect.test-runner
+      - name: Test & build
+        run: clojure -T:build ci
