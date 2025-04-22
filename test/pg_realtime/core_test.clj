@@ -52,6 +52,36 @@
         (is (not (sut/should-refresh? conn result watched-columns refresh? notification-data)))))))
 
 ;; -------------------------------------------------------------------
+;; Refresh with predicate in map
+;; -------------------------------------------------------------------
+(deftest predicate-refresh-map-behavior
+  (let [conn nil
+        result [{:id 1 :name "Maddy" :status "active"}]
+        watched-columns {:users #{:id :name :status}}
+        refresh? {:users {:status #(= % "active")}}]
+
+    (testing "predicate matches row, triggers refresh"
+      (let [notification-data {:table :users
+                               :operation :update
+                               :changes {:name ["Maddy" "Madeline"]}
+                               :row     {:id 1 :name "Madeline" :status "active"}}]
+        (is (sut/should-refresh? conn result watched-columns refresh? notification-data))))
+
+    (testing "predicate matches updated field, triggers refresh"
+      (let [notification-data {:table :users
+                               :operation :update
+                               :changes {:status ["active" "inactive"]}
+                               :row     {:id 1 :name "Madeline" :status "active"}}]
+        (is (sut/should-refresh? conn result watched-columns refresh? notification-data))))
+
+    (testing "predicate does not match row, suppresses refresh"
+      (let [notification-data {:table :users
+                               :operation :update
+                               :changes {:name ["Sebastian" "Seb"]}
+                               :row     {:id 2 :name "Seb" :status "inactive"}}]
+        (is (not (sut/should-refresh? conn result watched-columns refresh? notification-data)))))))
+
+;; -------------------------------------------------------------------
 ;; Refresh with literal-match map
 ;; -------------------------------------------------------------------
 (deftest literal-refresh-map-behavior

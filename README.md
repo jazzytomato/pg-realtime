@@ -4,9 +4,7 @@ A simple Clojure library to create "live queries" for PostgreSQL - you provide a
 updates whenever the underlying data changes. This enables reactive applications with real-time data synchronization
 without having to implement complex change detection or polling.
 
-pg-realtime does not efficiently stream changes directly into your data. It helps you re-run your query at the right time. 
-
-Key features:
+pg-realtime does not efficiently stream changes directly into your data. It helps you re-run your query at the right time.
 
 - **No infrastructure changes** - Works with your existing PostgreSQL database
 - **Real-time updates** - Subscribe to queries and get results that automatically update
@@ -16,6 +14,17 @@ Key features:
 - **Partition-aware** - Automatically handles partitioned tables
 
 pg-realtime is framework-agnostic, but was designed to be used with [Clojure Electric](https://github.com/hyperfiddle/electric).
+
+In a nutshell:
+```clojure
+(-> (pgrt/sub ::all-users db "SELECT * FROM users")
+  (add-watch ::watcher #(println "Users data changed: " %4)))
+```
+
+## Status
+Alpha. Early release, may have bugs and breaking API changes. 
+It has not been tested in production environment yet.
+Any contribution or feedback is very welcome.
 
 ## Rationale
 
@@ -193,10 +202,10 @@ For resources that are shared across users, you can use a common query ID (e.g. 
 (e/server
   (let [status (e/watch !status) ;; e.g. coming from a UI filter
         sub-id (str user-id "-orders")
-        !orders (pgrt/sub sub-id "SELECT id, status FROM orders WHERE user_id = $1 AND status = $2" {:params [user-id status]})]
+        !orders (pgrt/sub sub-id db "SELECT id, status FROM orders WHERE user_id = $1 AND status = $2" {:params [user-id status]})]
     (e/on-unmount #(pgrt/unsub sub-id))
     (dom/table
-      (e/for [[{:keys [id status]}] (e/diff-by :id (e/watch !orders))]
+      (e/for [{:keys [id status]} (e/diff-by :id (e/watch !orders))]
              (dom/tr (dom/td (dom/text id)) (dom/td (dom/text status)))))))
 ```
 
@@ -231,7 +240,30 @@ Given the following query:
 By default, this query will refresh when any row is inserted in or deleted from the `orders` & `items` table. Or if the `orders.id`, `orders.code`, `orders.status`, `items.price` columns are updated.
 This is because the query parser only tracks used table and columns names. It doesn't track the values used in the query.
 This may be fine for most cases, but if your tables are very large, or you have a lot of concurrent updates, you may want to limit the refreshes to pending orders.
-You can do this by providing a custom refresh function. This function will receive the notification data and should return true if the subscription should be refreshed, or false otherwise.
+You can do this by providing a custom refresh map or function.
+
+#### Custom refresh map
+
+```clojure
+(def !pending-orders
+  (pgrt/sub 
+    ::pending-orders
+    conn
+    "SELECT o.id, o.code, count(*) as item_count, sum(i.price) as total_price
+     FROM orders o
+     INNER JOIN items i ON i.order_id = o.id
+     WHERE status = 'pending' GROUP BY 1, 2"
+    {:refresh? {:orders {:status "pending"}}}))
+```
+The table `items` is omitted, so it will use the default behaviour (tracked column changes).
+
+You can also use a predicate function instead of a value.
+```clojure
+{:refresh? {:orders {:status #(= % "pending")}}}
+```
+The function will receive the notification data and should return true if the query should be refreshed. 
+In case of updates, the predicate will be called twice, once for the old value and once for the new value. If any of the calls return true, the query will be refreshed. 
+This is usually what you'd want, but if you need more control over the refresh logic, you can use a custom function instead of a map.
 
 #### Custom refresh function
 When using a custom refresh function, you receive notification data with the following structure:

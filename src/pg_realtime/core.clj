@@ -77,7 +77,7 @@
       (error-handler e query)
       @result-atom)))
 
-(defn should-refresh? [conn result watched-columns refresh? {:keys [table changes row] :as notification-data}]
+(defn should-refresh? [conn result watched-columns refresh? {:keys [table operation changes row] :as notification-data}]
   (let [changed-col-names (set (keys changes))
         watched-table-cols (get watched-columns table)
         tracked-columns-changed? (some changed-col-names watched-table-cols)]
@@ -87,15 +87,18 @@
         (if-let [filter-map (get refresh? table)]
           (->> filter-map
                (some (fn [[filter-col filter-val]]
-                       (let [filter-set (if (and (keyword? filter-val) (= "result" (namespace filter-val)))
-                                          (->> (if (vector? result) result [result])
-                                               (map (-> filter-val name keyword)) ; lookup value in result
-                                               set)
-                                          #{filter-val})        ; value is a literal
-                             notification-values (->> (get changes filter-col)
-                                                      (into #{(get row filter-col)})
-                                                      set)]
-                         (not-empty (set/intersection filter-set notification-values))))))
+                       (let [notification-values (cond-> #{(get row filter-col)}
+                                                   (= :update operation) (conj (get changes filter-col)))]
+                         (if (fn? filter-val)
+                           (some filter-val notification-values)
+
+                           (let [filter-set (if (and (keyword? filter-val) (= "result" (namespace filter-val)))
+                                              (->> (if (vector? result) result [result])
+                                                   (map (-> filter-val name keyword)) ; lookup value in result
+                                                   set)
+                                              #{filter-val})]    ; value is a literal
+
+                             (not-empty (set/intersection filter-set notification-values))))))))
           true) ;; map not present in filter, default to tracked-columns
 
         (when-let [refresh-result (refresh? conn result notification-data)]
