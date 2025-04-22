@@ -1,4 +1,8 @@
 # pg-realtime
+[![Build Status](https://github.com/jazzytomato/pg-realtime/actions/workflows/ci.yml/badge.svg)](https://github.com/jazzytomato/pg-realtime/actions)
+[![Clojars Project](https://img.shields.io/clojars/v/net.clojars.jazzytomato/pg-realtime.svg)](https://clojars.org/net.clojars.jazzytomato/pg-realtime)
+[![cljdoc badge](https://cljdoc.org/badge/net.clojars.jazzytomato/pg-realtime)](https://cljdoc.org/d/net.clojars.jazzytomato/pg-realtime/)
+
 
 A simple Clojure library to create "live queries" for PostgreSQL - you provide a SQL query, and get back an atom that automatically
 updates whenever the underlying data changes. This enables reactive applications with real-time data synchronization
@@ -94,10 +98,10 @@ Add the following dependency to your `project.clj` or `deps.edn`:
 
 ```clojure
 ;; lein
-[com.github.jazzytomato/pg-realtime "0.1.0"]
+[net.clojars.jazzytomato/pg-realtime "0.1.0"]
 
 ;; deps
-com.github.jazzytomato/pg-realtime {:mvn/version "0.1.0"}
+net.clojars.jazzytomato/pg-realtime {:mvn/version "0.1.0"}
 ```
 
 ## Basic Usage
