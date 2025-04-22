@@ -5,7 +5,7 @@
             [deps-deploy.deps-deploy :as dd]))
 
 (def lib 'net.clojars.jazzytomato/pg-realtime)
-(def version "0.0.0")
+(def version "0.1.0")
 (def class-dir "target/classes")
 
 (defn bump-version
